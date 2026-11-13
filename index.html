@@ -3,7 +3,6 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta http-equiv="Cache-Control" content="no-cache">
 <style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font-size:14px}img{max-width:100%}[hidden]{display:none!important}</style>
 <title>冠成企劃書資料夾</title>
 <meta name="claude:viewport-fit-sides" content="cover">
@@ -11,6 +10,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@700&display=swap">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pptxgenjs/3.12.0/pptxgen.bundle.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
 /* Layout: case file — step rail on the left (top strip on phones), one form section at a time, sticky export bar */
 :root{
@@ -157,14 +157,15 @@ const CHECKS=[
   ["power","有電力工程時，已放配電安裝示意圖與線路說明"],
   ["time","有說明配合學校施工時間（下課、假日施工）"],
   ["brand","範本中本案品牌的服務據點、品牌介紹已取消隱藏，其他品牌頁已刪除"],
-  ["stamp","標價清單為蓋章版，與本表金額一致"],
+  ["stamp","ERP 報價單為蓋章版，總價與網頁填寫一致"],
 ];
 const blank=()=>({v:1,info:{org:"",caseNo:"",caseName:"",date:"",presenter:"",title:"",company:"冠成家電股份有限公司",copy:"正本",warranty:"",deadline:"",budget:""},
-  rubric:[],brand:"禾聯",sched:[],quote:[],sites:[],feedback:[],checks:{}});
+  rubric:[],brand:"禾聯",sched:[],quote:[],quoteMode:"upload",quoteImgs:[],quoteTotal:"",lumps:[],sites:[],feedback:[],checks:{}});
 function sample(){const c=blank();Object.assign(c.info,{org:"【範例】臺南市立中山國民中學",caseNo:"【範例】115-001",caseName:"【範例】115年度教室冷氣汰換財物採購",date:"2026-12-10",presenter:"王小明",title:"業務經理",warranty:"3",deadline:"60",budget:"1490000"});
   c.rubric=RUBRIC_PRESETS["中興國中"].map(([name,pts,ch])=>({name,pts,ch,pg:""}));
   c.sched=[{t:"評選、決標",a:"2026-12-10",b:""},{t:"現場會勘、確認配置",a:"2026-12-11",b:"2026-12-18"},{t:"設備備料",a:"2026-12-14",b:"2027-01-08"},{t:"安裝施工（配合下課及假日）",a:"2027-01-11",b:"2027-01-29"},{t:"測試、教育訓練",a:"2027-02-01",b:"2027-02-03"},{t:"報請驗收",a:"2027-02-05",b:""}];
   c.quote=[{name:"一對一變頻冷暖分離式冷氣",spec:"8.0kW／一級能效",qty:20,unit:"組",price:52000,note:""},{name:"冷氣安裝工程",spec:"含銅管 4M、排水管",qty:20,unit:"組",price:6970,note:""},{name:"電力工程",spec:"",qty:1,unit:"式",price:85000,note:""},{name:"舊機拆除及回收",spec:"",qty:20,unit:"台",price:800,note:""}];
+  c.quoteMode="upload";c.quoteTotal="1344420";c.lumps=[{name:"電力工程",note:"含主開關箱、幹線配管配線、各樓層 NFB 分箱"}];
   c.feedback=[{title:"加贈 DC 循環扇",desc:"每間教室 1 台，加速冷房、更省電"},{title:"每年免費保養 1 次",desc:"保固期內清洗濾網與檢查冷媒"}];
   c.example=true;return c;}
 let C;
@@ -200,15 +201,21 @@ function issues(){
       if(!s.ann.some(a=>a.kind==="hole"))push("sites","warn",`${nm}：沒有標出鑽孔／洗孔位置`);
       if(!s.ann.some(a=>a.type==="line"))push("sites","warn",`${nm}：沒有畫管線路徑`);}
     if(!s.place)push("sites","bad",`第 ${k+1} 張：未填位置名稱`);});
+  if(C.quoteMode==="upload"){
+    if(!C.quoteImgs.length)push("quote","bad","還沒上傳 ERP 報價單（PDF 或 JPG）");
+    if(!num(C.quoteTotal))push("quote","bad","未填報價總價（含稅）");
+    C.lumps.forEach((l,k)=>{if(!l.name)push("quote","bad",`「一式」第 ${k+1} 項缺品名`);else if(!String(l.note).trim())push("quote","bad",`「${l.name}」一式包含哪些工作還沒寫`);});
+    if(!C.lumps.length)push("quote","warn","報價單如果有「一式」的項目，請在下方列出並說明內容");
+  }else{
   if(!C.quote.length)push("quote","bad","尚未填報價");
   C.quote.forEach((q,k)=>{if(!q.name||!num(q.qty)||!num(q.price))push("quote","bad",`第 ${k+1} 列缺品名、數量或單價`);
-    if(/式/.test(q.unit)&&!String(q.note).trim())push("quote","bad",`「${q.name||"第 "+(k+1)+" 列"}」單位是「${q.unit}」，要說明一式包含哪些內容`);});
+    if(/式/.test(q.unit)&&!String(q.note).trim())push("quote","bad",`「${q.name||"第 "+(k+1)+" 列"}」單位是「${q.unit}」，要說明一式包含哪些內容`);});}
   const tot=quoteTotals();if(num(i.budget)>0&&tot.total>num(i.budget))push("quote","bad",`總價 ${money(tot.total)} 超過預算上限 ${money(num(i.budget))}`);
   if(!C.feedback.length)push("feedback","warn","沒有創意回饋項目");
   const unchecked=CHECKS.filter(c=>!C.checks[c[0]]).length;if(unchecked)push("check","warn",`交件檢查還有 ${unchecked} 項未打勾`);
   return I;
 }
-function quoteTotals(){const sub=C.quote.reduce((a,q)=>a+num(q.qty)*num(q.price),0),tax=Math.round(sub*0.05);return{sub,tax,total:sub+tax};}
+function quoteTotals(){if(C.quoteMode==="upload"){const t=num(C.quoteTotal);return{sub:0,tax:0,total:t};}const sub=C.quote.reduce((a,q)=>a+num(q.qty)*num(q.price),0),tax=Math.round(sub*0.05);return{sub,tax,total:sub+tax};}
 
 /* ---------------- steps ---------------- */
 const STEPS=[["info","基本資料"],["rubric","評選項目"],["brand","投標品牌"],["sched","履約期程"],["sites","現場施工圖"],["quote","報價明細"],["feedback","創意回饋"],["check","檢查與轉出"]];
@@ -225,6 +232,18 @@ function field(path,label,opts={}){const [g,k]=path.split(".");const v=C[g][k]??
   if(opts.select)return `<label class="f${opts.req?" req":""}"><span>${label}</span><select id="f-${k}" data-path="${path}">${opts.select.map(o=>`<option${o===v?" selected":""}>${o}</option>`).join("")}</select></label>`;
   return `<label class="f${opts.req?" req":""}"><span>${label}</span><input id="f-${k}" data-path="${path}" type="${opts.type||"text"}" value="${esc(v)}" placeholder="${esc(opts.ph||"")}"></label>`;}
 
+function quoteTableView(){const t=quoteTotals();return `<h1>報價明細</h1><p class="lead">數量 × 單價自動計算，加 5% 營業稅。單位是「式」的項目，一定要在說明欄寫清楚包含哪些工作。</p>
+  <div class="tablewrap"><table style="min-width:900px"><thead><tr><th>品名</th><th>規格</th><th style="width:70px">數量</th><th style="width:64px">單位</th><th style="width:100px">單價</th><th style="width:110px;text-align:right">複價</th><th style="width:36px"></th></tr></thead><tbody>
+  ${C.quote.map((q,k)=>`<tr><td><input id="q-n-${k}" data-arr="quote" data-i="${k}" data-k="name" value="${esc(q.name)}" aria-label="品名">
+     <input id="q-o-${k}" data-arr="quote" data-i="${k}" data-k="note" value="${esc(q.note)}" placeholder="${/式/.test(q.unit)?"必填：一式包含哪些工作":"說明（可空白）"}" aria-label="說明" style="margin-top:4px;font-size:14px${/式/.test(q.unit)&&!q.note?";border-color:var(--bad)":""}"></td>
+   <td><input id="q-s-${k}" data-arr="quote" data-i="${k}" data-k="spec" value="${esc(q.spec)}" aria-label="規格"></td>
+   <td><input id="q-q-${k}" type="number" data-arr="quote" data-i="${k}" data-k="qty" value="${esc(q.qty)}" aria-label="數量"></td>
+   <td><input id="q-u-${k}" data-arr="quote" data-i="${k}" data-k="unit" value="${esc(q.unit)}" aria-label="單位"></td>
+   <td><input id="q-p-${k}" type="number" data-arr="quote" data-i="${k}" data-k="price" value="${esc(q.price)}" aria-label="單價"></td>
+   <td class="num" id="q-sum-${k}">${money(num(q.qty)*num(q.price))}</td>
+   <td><button class="x" data-del="quote" data-i="${k}" aria-label="刪除">×</button></td></tr>`).join("")}</tbody>
+  <tfoot><tr><td colspan="5">小計</td><td class="num" id="q-sub">${money(t.sub)}</td><td></td></tr><tr><td colspan="5">營業稅 5%</td><td class="num" id="q-tax">${money(t.tax)}</td><td></td></tr><tr><td colspan="5">總價（含稅）</td><td class="num" id="q-tot">${money(t.total)}</td><td></td></tr></tfoot></table></div>
+  <div class="row"><button class="btn" data-add="quote">＋ 新增一列</button></div>${stepMsgs("quote")}`;}
 const VIEWS={
 info:()=>`<h1>基本資料</h1><p class="lead">只填一次，封面、結尾、服務承諾、期程表都會用同一份資料，不會再前後不一致。</p>
   ${C.example?`<div class="msg tip">目前是範例案件，方便你看轉出效果。按左側「開新案件」清空後開始填。</div>`:""}
@@ -259,18 +278,30 @@ sched:()=>`<h1>履約期程</h1><p class="lead">一列一個工作項目；只�
 sites:()=>`<h1>現場施工圖</h1><p class="lead">請師傅到每個施工點拍照。上傳後在照片上標出室內機、室外機、鑽孔／洗孔位置，並畫出冷媒管、排水管、電源線怎麼走。每張照片轉成一頁「現場施工示意」，標註在 PowerPoint 裡還能再改。</p>
   <div class="sites" id="sites">${C.sites.map((s,k)=>siteCard(s,k)).join("")}</div>
   <div class="row"><button class="btn primary" id="addSite">＋ 新增施工點</button></div>${stepMsgs("sites")}`,
-quote:()=>{const t=quoteTotals();return `<h1>報價明細</h1><p class="lead">數量 × 單價自動計算，加 5% 營業稅。單位是「式」的項目，一定要在說明欄寫清楚包含哪些工作。</p>
-  <div class="tablewrap"><table style="min-width:900px"><thead><tr><th>品名</th><th>規格</th><th style="width:70px">數量</th><th style="width:64px">單位</th><th style="width:100px">單價</th><th style="width:110px;text-align:right">複價</th><th style="width:36px"></th></tr></thead><tbody>
-  ${C.quote.map((q,k)=>`<tr><td><input id="q-n-${k}" data-arr="quote" data-i="${k}" data-k="name" value="${esc(q.name)}" aria-label="品名">
-     <input id="q-o-${k}" data-arr="quote" data-i="${k}" data-k="note" value="${esc(q.note)}" placeholder="${/式/.test(q.unit)?"必填：一式包含哪些工作":"說明（可空白）"}" aria-label="說明" style="margin-top:4px;font-size:14px${/式/.test(q.unit)&&!q.note?";border-color:var(--bad)":""}"></td>
-   <td><input id="q-s-${k}" data-arr="quote" data-i="${k}" data-k="spec" value="${esc(q.spec)}" aria-label="規格"></td>
-   <td><input id="q-q-${k}" type="number" data-arr="quote" data-i="${k}" data-k="qty" value="${esc(q.qty)}" aria-label="數量"></td>
-   <td><input id="q-u-${k}" data-arr="quote" data-i="${k}" data-k="unit" value="${esc(q.unit)}" aria-label="單位"></td>
-   <td><input id="q-p-${k}" type="number" data-arr="quote" data-i="${k}" data-k="price" value="${esc(q.price)}" aria-label="單價"></td>
-   <td class="num" id="q-sum-${k}">${money(num(q.qty)*num(q.price))}</td>
-   <td><button class="x" data-del="quote" data-i="${k}" aria-label="刪除">×</button></td></tr>`).join("")}</tbody>
-  <tfoot><tr><td colspan="5">小計</td><td class="num" id="q-sub">${money(t.sub)}</td><td></td></tr><tr><td colspan="5">營業稅 5%</td><td class="num" id="q-tax">${money(t.tax)}</td><td></td></tr><tr><td colspan="5">總價（含稅）</td><td class="num" id="q-tot">${money(t.total)}</td><td></td></tr></tfoot></table></div>
-  <div class="row"><button class="btn" data-add="quote">＋ 新增一列</button></div>${stepMsgs("quote")}`;},
+quote:()=>{const modeChips=`<div class="chips">${[["upload","上傳 ERP 報價單（建議）"],["table","在網頁填明細"]].map(([m,n])=>`<button class="chip" data-qmode="${m}" aria-pressed="${C.quoteMode===m}">${n}</button>`).join("")}</div>`;
+  if(C.quoteMode!=="upload"){return quoteTableView().replace("</p>","</p>"+modeChips);}
+  return `<h1>報價明細</h1><p class="lead">上傳 ERP 打好的報價單（蓋章版 PDF 或 JPG），每一頁轉成一張「詳細價目表」投影片。網頁只需要填總價和「一式」項目的說明，用來檢查預算、補充報價單寫不下的內容。</p>
+  ${modeChips}
+  <div class="panel"><b>1　上傳報價單</b>
+    <span style="color:var(--muted);font-size:15px">PDF 最清楚（自動轉成高解析圖片）；JPG 請用 200 dpi 以上。可一次選多個檔案。</span>
+    <div class="row"><label class="btn primary">選擇 PDF 或圖片<input type="file" id="quoteFile" accept="application/pdf,image/*" multiple hidden></label><span id="quoteBusy" style="color:var(--muted);font-size:15px"></span></div>
+    ${C.quoteImgs.length?`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px">${C.quoteImgs.map((q,k)=>`<figure style="margin:0;border:1px solid var(--line);border-radius:8px;padding:6px;background:#fff">
+      <img src="${q.img}" alt="報價單第 ${k+1} 頁" style="display:block;width:100%;height:auto;border-radius:4px">
+      <figcaption class="row" style="justify-content:space-between;margin-top:4px;font-size:14px;color:#1e2a36">第 ${k+1} 頁<span class="row" style="gap:2px">${k?`<button class="x" data-qup="${k}" aria-label="往前移">↑</button>`:""}<button class="x" data-qdel="${k}" aria-label="刪除這頁">×</button></span></figcaption></figure>`).join("")}</div>`:""}
+  </div>
+  <div class="panel"><b>2　報價總價</b>
+    <div class="grid"><label class="f req"><span>總價（含稅，照報價單）</span><input id="f-quoteTotal" type="number" data-root="quoteTotal" value="${esc(C.quoteTotal)}" placeholder="例：1344420"></label>
+    <label class="f"><span>預算／契約上限（基本資料填的）</span><input value="${C.info.budget?money(num(C.info.budget)):"未填"}" disabled></label></div>
+  </div>
+  <div class="panel"><b>3　「一式」項目說明</b>
+    <span style="color:var(--muted);font-size:15px">報價單上單位是「式」的項目，寫清楚包含哪些工作，會放在報價單旁邊。</span>
+    ${C.lumps.map((l,k)=>`<div class="grid" style="grid-template-columns:minmax(0,1fr) minmax(0,2fr) auto;align-items:end">
+      <label class="f"><span>品名</span><input id="lp-n-${k}" data-arr="lumps" data-i="${k}" data-k="name" value="${esc(l.name)}" placeholder="例：電力工程"></label>
+      <label class="f"><span>一式包含哪些工作</span><input id="lp-o-${k}" data-arr="lumps" data-i="${k}" data-k="note" value="${esc(l.note)}" placeholder="例：含主開關箱、幹線配管配線、各樓層分箱"></label>
+      <button class="x" data-del="lumps" data-i="${k}" aria-label="刪除">×</button></div>`).join("")}
+    <div class="row"><button class="btn" data-add="lumps">＋ 新增一式項目</button></div>
+  </div>
+  ${stepMsgs("quote")}`;},
 feedback:()=>`<h1>創意回饋</h1><p class="lead">為本案量身提供的加值服務，最多 4 項。寫做得到的事，委員會在詢答時追問。</p>
   <div class="tablewrap"><table><thead><tr><th style="width:38%">回饋項目</th><th>說明</th><th style="width:36px"></th></tr></thead><tbody>
   ${C.feedback.map((r,k)=>`<tr><td><input id="fb-t-${k}" data-arr="feedback" data-i="${k}" data-k="title" value="${esc(r.title)}" aria-label="回饋項目"></td><td><input id="fb-d-${k}" data-arr="feedback" data-i="${k}" data-k="desc" value="${esc(r.desc)}" aria-label="說明"></td><td><button class="x" data-del="feedback" data-i="${k}" aria-label="刪除">×</button></td></tr>`).join("")}</tbody></table></div>
@@ -332,20 +363,31 @@ document.addEventListener("pointermove",e=>{const d=tool.draft;if(!d||d.type!=="
 document.addEventListener("pointerup",()=>{const d=tool.draft;if(!d||d.type!=="rect")return;if(Math.abs(d.w)>0.02&&Math.abs(d.h)>0.02){d.site.ann.push({type:"rect",kind:d.kind,x:Math.min(d.x,d.x+d.w),y:Math.min(d.y,d.y+d.h),w:Math.abs(d.w),h:Math.abs(d.h)});save();}
   tool.draft=null;redrawSite(tool.site);});
 function finishLine(k){const d=tool.draft;if(d&&d.type==="line"&&d.site===C.sites[k]&&d.pts.length>1){C.sites[k].ann.push({type:"line",kind:d.kind,pts:d.pts});save();}tool.draft=null;redrawSite(k);renderSum();}
-async function loadPhoto(file){const url=URL.createObjectURL(file);const img=new Image();await new Promise((r,j)=>{img.onload=r;img.onerror=j;img.src=url;});
-  const max=1600,sc=Math.min(1,max/Math.max(img.width,img.height)),w=Math.round(img.width*sc),h=Math.round(img.height*sc);
+async function loadPhoto(file,maxPx,q){const url=URL.createObjectURL(file);const img=new Image();await new Promise((r,j)=>{img.onload=r;img.onerror=j;img.src=url;});
+  const max=maxPx||1600,sc=Math.min(1,max/Math.max(img.width,img.height)),w=Math.round(img.width*sc),h=Math.round(img.height*sc);
   const cv=document.createElement("canvas");cv.width=w;cv.height=h;cv.getContext("2d").drawImage(img,0,0,w,h);URL.revokeObjectURL(url);
-  return {img:cv.toDataURL("image/jpeg",0.82),w,h};}
+  return {img:cv.toDataURL("image/jpeg",q||0.82),w,h};}
+async function pdfToImages(file,onPage){
+  const lib=window.pdfjsLib;if(!lib)throw new Error("PDF 工具沒有載入，請重新整理或改用 JPG");
+  lib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+  const doc=await lib.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise,out=[];
+  for(let n=1;n<=doc.numPages;n++){onPage&&onPage(n);const pg=await doc.getPage(n),v1=pg.getViewport({scale:1}),sc=2200/Math.max(v1.width,v1.height),vp=pg.getViewport({scale:sc});
+    const cv=document.createElement("canvas");cv.width=Math.round(vp.width);cv.height=Math.round(vp.height);const g=cv.getContext("2d");g.fillStyle="#fff";g.fillRect(0,0,cv.width,cv.height);
+    await pg.render({canvasContext:g,viewport:vp}).promise;out.push({img:cv.toDataURL("image/jpeg",0.88),w:cv.width,h:cv.height,name:`${file.name} p${n}`});}
+  return out;}
 
 /* ---------------- render + events ---------------- */
 function render(){$("main").innerHTML=`<section class="step" aria-labelledby="h-${cur}">${VIEWS[cur]().replace("<h1>",`<h1 id="h-${cur}">`)}</section>`;renderSum();}
 function go(k){cur=k;tool.draft=null;try{localStorage.setItem("kc-case-step",k);}catch(e){}render();scrollTo({top:0});}
 document.addEventListener("click",async e=>{const t=e.target.closest("button,[data-step]");if(!t)return;const d=t.dataset;
   if(d.step){go(d.step);return;}
-  if(d.add){const row={rubric:{name:"",pts:"",ch:CHAPTERS[0],pg:""},sched:{t:"",a:"",b:""},quote:{name:"",spec:"",qty:"",unit:"台",price:"",note:""},feedback:{title:"",desc:""}}[d.add];C[d.add].push(row);save();render();return;}
+  if(d.add){const row={rubric:{name:"",pts:"",ch:CHAPTERS[0],pg:""},sched:{t:"",a:"",b:""},quote:{name:"",spec:"",qty:"",unit:"台",price:"",note:""},feedback:{title:"",desc:""},lumps:{name:"",note:""}}[d.add];C[d.add].push(row);save();render();return;}
   if(d.del){C[d.del].splice(+d.i,1);save();render();return;}
   if(d.preset){C.rubric=RUBRIC_PRESETS[d.preset].map(([name,pts,ch])=>({name,pts,ch,pg:""}));save();render();return;}
   if(d.brand){C.brand=d.brand;save();render();return;}
+  if(d.qmode){C.quoteMode=d.qmode;save();render();return;}
+  if(d.qdel!==undefined){C.quoteImgs.splice(+d.qdel,1);save();render();return;}
+  if(d.qup!==undefined){const k=+d.qup;[C.quoteImgs[k-1],C.quoteImgs[k]]=[C.quoteImgs[k],C.quoteImgs[k-1]];save();render();return;}
   if(d.mode){tool.site=+d.for;tool.mode=d.mode;tool.kind=d.mode==="erase"?null:KINDS[d.mode][0][0];tool.draft=null;render();return;}
   if(d.kind){tool.site=+d.for;tool.kind=d.kind;render();return;}
   if(d.finish!==undefined){finishLine(+d.finish);return;}
@@ -356,6 +398,7 @@ document.addEventListener("click",async e=>{const t=e.target.closest("button,[da
 });
 document.addEventListener("input",e=>{const t=e.target,d=t.dataset;
   if(d.path){const [g,k]=d.path.split(".");C[g][k]=t.value;save();return;}
+  if(d.root){C[d.root]=t.value;save();return;}
   if(d.arr){C[d.arr][+d.i][d.k]=t.value;save();
     if(d.arr==="quote"){const q=C.quote[+d.i];const el=$("q-sum-"+d.i);if(el)el.textContent=money(num(q.qty)*num(q.price));const tt=quoteTotals();$("q-sub").textContent=money(tt.sub);$("q-tax").textContent=money(tt.tax);$("q-tot").textContent=money(tt.total);}
     if(d.arr==="rubric"&&d.k==="pts"){/* total refresh on blur */}
@@ -363,9 +406,12 @@ document.addEventListener("input",e=>{const t=e.target,d=t.dataset;
   if(d.customlabel!==undefined){tool.custom=t.value;}
 });
 document.addEventListener("change",async e=>{const t=e.target,d=t.dataset;
-  if(d.arr&&(d.arr==="rubric"||d.arr==="quote"&&d.k==="unit"||d.arr==="sched"))render();
-  if(d.path)render();
+  if(d.arr&&(d.arr==="rubric"||d.arr==="quote"&&d.k==="unit"||d.arr==="sched"||d.arr==="sites"&&d.k==="place"||d.arr==="lumps")||d.path||d.root)setTimeout(()=>{const fid=document.activeElement&&document.activeElement.id;render();if(fid&&$(fid))$(fid).focus();},0);
   if(d.check){C.checks[d.check]=t.checked;save();return;}
+  if(t.id==="quoteFile"&&t.files.length){const busy=$("quoteBusy");try{for(const f of t.files){busy.textContent="處理中："+f.name;
+      if(/pdf$/i.test(f.name)||f.type==="application/pdf")C.quoteImgs.push(...await pdfToImages(f,n=>busy.textContent=`處理中：${f.name} 第 ${n} 頁`));
+      else{const r=await loadPhoto(f,2200,0.88);C.quoteImgs.push({img:r.img,w:r.w,h:r.h,name:f.name});}}
+    save();render();}catch(err){alertMsg("報價單讀不進來："+(err&&err.message||"請改用 JPG"));busy.textContent="";}t.value="";return;}
   if(d.upload!==undefined&&t.files[0]){const k=+d.upload;try{Object.assign(C.sites[k],await loadPhoto(t.files[0]));C.sites[k].ann=[];save();render();}catch(err){alertMsg("這張照片讀不進來，請換一張 JPG 或 PNG");}}
 });
 addEventListener("keydown",e=>{if(e.key==="Escape"&&tool.draft){tool.draft=null;if(tool.site!=null)redrawSite(tool.site);}if(e.key==="Enter"&&tool.draft&&tool.draft.type==="line"){finishLine(tool.site);}});
@@ -373,7 +419,7 @@ function alertMsg(t,ok){const m=$("exportMsg");m.textContent=t;m.className="msg 
 
 /* ---------------- file save / load ---------------- */
 let DL=null;(async()=>{try{DL=window.claude?await window.claude.use("downloads"):null;}catch(e){DL=null;}})();
-function plainDownload(filename,data){ // GitHub Pages / any normal browser
+function plainDownload(filename,data){
   const blob=data instanceof Blob?data:new Blob([data],{type:filename.endsWith(".json")?"application/json":"application/octet-stream"});
   const url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();
   setTimeout(()=>URL.revokeObjectURL(url),4000);alertMsg("已下載 "+filename,true);return true;}
@@ -464,7 +510,7 @@ function buildPptx(){
           s.addShape(P.ShapeType.line,{x:Math.min(x1,x2),y:Math.min(y1,y2),w:Math.abs(x2-x1)||0.001,h:Math.abs(y2-y1)||0.001,flipV:(x2>=x1)!==(y2>=y1),line:{color:c,width:3,dashType:a.kind==="ref"?"solid":"dash"}});}}
       else if(a.type==="rect"){s.addShape(P.ShapeType.roundRect,{x:bx+a.x*bw,y:by+a.y*bh,w:a.w*bw,h:a.h*bh,fill:{color:c,transparency:85},line:{color:c,width:2.25},rectRadius:0.06});}
       else{const t=a.text||KIND[a.kind].name,px=bx+a.x*bw,py=by+a.y*bh,lw=0.16*t.length+0.3;const lx=Math.min(px+0.08,bx+bw-lw-0.02),ly=Math.max(py-0.42,by+0.02);
-        s.addShape(P.ShapeType.line,{x:Math.min(px,lx+0.1),y:ly+0.28,w:Math.abs(lx+0.1-px)||0.001,h:Math.abs(py-(ly+0.28))||0.001,flipV:(lx+0.1>=px)!==(ly+0.28>=py)?false:true,line:{color:c,width:1.5}});
+        s.addShape(P.ShapeType.line,{x:Math.min(px,lx+0.1),y:ly+0.28,w:Math.abs(lx+0.1-px)||0.001,h:Math.abs(py-(ly+0.28))||0.001,flipV:(lx+0.1>=px)!==(ly+0.28>=py),line:{color:c,width:1.5}});
         s.addShape(P.ShapeType.ellipse,{x:px-0.07,y:py-0.07,w:0.14,h:0.14,fill:{color:c},line:{color:"FFFFFF",width:1.5}});
         card(s,lx,ly,lw,0.3,c,{rectRadius:0.08});T(s,t,{x:lx,y:ly,w:lw,h:0.3,fontSize:10,bold:true,color:"FFFFFF",align:"center",valign:"middle"});}}
     const used=[...new Set(st.ann.map(a=>a.kind))];let ly=1.3;
@@ -476,6 +522,25 @@ function buildPptx(){
     if(st.notes){T(s,"施工說明",{x:7.0,y:ly,w:2.5,h:0.3,fontSize:12,bold:true});T(s,st.notes,{x:7.0,y:ly+0.36,w:2.5,h:6.9-ly-0.36,fontSize:10,color:C_SLATE,lineSpacingMultiple:1.1,fit:"shrink"});}}
 
   // quote
+  if(C.quoteMode==="upload"){const tq=num(C.quoteTotal);
+    C.quoteImgs.forEach((q,p)=>{s=content("06　規格及詳細價目表",p?"詳細價目表（續）":"詳細價目表");
+      if(q.h>=q.w&&p===0){const bh=5.6,bw=bh*q.w/q.h;s.addImage({data:q.img,x:0.5,y:1.3,w:bw,h:bh});
+        s.addShape(P.ShapeType.rect,{x:0.5,y:1.3,w:bw,h:bh,fill:{type:"none"},line:{color:C_LINE,width:0.75}});
+        const rx=0.5+bw+0.35,rw=9.5-rx;
+        card(s,rx,1.3,rw,1.5,C_INK,{rectRadius:0.08});
+        T(s,"報價總價（含稅）",{x:rx+0.25,y:1.45,w:rw-0.5,h:0.3,fontSize:12,bold:true,color:C_AMB});
+        T(s,[{text:"NT$ ",options:{fontSize:14,color:"FFFFFF"}},{text:money(tq),options:{fontSize:26,bold:true,color:"FFFFFF"}}],{x:rx+0.25,y:1.85,w:rw-0.5,h:0.55});
+        T(s,"詳細品項、數量與單價見左側報價單",{x:rx+0.25,y:2.42,w:rw-0.5,h:0.28,fontSize:10,color:"C9D1DA"});
+        let y=3.05;if(C.lumps.length){T(s,"「一式」項目內容說明",{x:rx,y,w:rw,h:0.32,fontSize:13,bold:true});y+=0.42;
+          C.lumps.forEach(l=>{const per=Math.max(8,Math.floor((rw-0.36)*6.5)),h=Math.min(1.4,0.45+Math.ceil(String(l.note).length/per)*0.24);
+            card(s,rx,y,rw,h,C_TINT,{rectRadius:0.08});
+            T(s,[{text:`${l.name}　一式`,options:{bold:true,fontSize:12,breakLine:true}},{text:l.note,options:{fontSize:10.5,color:C_SLATE}}],{x:rx+0.18,y:y+0.1,w:rw-0.36,h:h-0.2,fit:"shrink"});y+=h+0.15;});}
+        T(s,"※ 金額以蓋章之報價單為準。",{x:rx,y:6.6,w:rw,h:0.3,fontSize:10,color:C_SLATE});}
+      else{const bw0=9,bh0=p===0?5.0:5.6;let bw=bw0,bh=bw0*q.h/q.w;if(bh>bh0){bh=bh0;bw=bh*q.w/q.h;}const x=0.5+(bw0-bw)/2;
+        s.addImage({data:q.img,x,y:1.3,w:bw,h:bh});s.addShape(P.ShapeType.rect,{x,y:1.3,w:bw,h:bh,fill:{type:"none"},line:{color:C_LINE,width:0.75}});
+        if(p===0){card(s,0.5,6.4,9,0.5,C_TINT,{rectRadius:0.2});T(s,`報價總價（含稅）NT$ ${money(tq)}${C.lumps.length?"　｜　"+C.lumps.map(l=>`${l.name}一式：${l.note}`).join("；"):""}`,{x:0.7,y:6.4,w:8.6,h:0.5,fontSize:11,bold:true,valign:"middle",fit:"shrink"});}}
+    });
+  }else{
   const qrows=C.quote.map((q,k)=>[String(k+1),q.name+(q.note?`\n（${q.note}）`:""),q.spec||"",String(q.qty),q.unit,money(num(q.price)),money(num(q.qty)*num(q.price))]);
   const per=10,t=quoteTotals();for(let p=0;p<Math.max(1,Math.ceil(qrows.length/per));p++){
     s=content("06　規格及詳細價目表",p?"詳細價目表（續）":"詳細價目表");
@@ -486,6 +551,7 @@ function buildPptx(){
     s.addTable([h,...body,...foot],{x:0.5,y:1.35,w:9,colW:[0.5,3.0,1.7,0.7,0.6,1.1,1.4],fontFace:FONT,fontSize:10.5,color:C_INK,valign:"middle",border:{type:"solid",pt:0.75,color:C_LINE},margin:0.06});
     if(lastPage)T(s,"※ 金額以蓋章之標價清單為準；單位為「式」之項目已列明工作內容。",{x:0.5,y:6.65,w:9,h:0.3,fontSize:10,color:C_SLATE});}
 
+  }
   // feedback
   if(C.feedback.length){s=content("08　創意回饋","創意回饋");const n=C.feedback.length,cw=(9-0.25*(n-1))/n;
     C.feedback.forEach((f,k)=>{const x=0.5+k*(cw+0.25),last=k===n-1;card(s,x,1.45,cw,4.2,last?C_INK:C_TINT,{rectRadius:0.06});
